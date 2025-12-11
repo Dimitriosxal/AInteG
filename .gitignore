@@ -1,9 +1,27 @@
-venv/
+# Python
 __pycache__/
 *.pyc
+*.pyo
 
+# Environments
 .env
-chroma_db/
-uploads/
+.env.*
+*.env
 
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Upload folders
+uploads/
+chroma_db/
+
+# Streamlit cache
 .streamlit/
+
+# Logs
+*.log

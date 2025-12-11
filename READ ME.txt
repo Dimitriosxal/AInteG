@@ -1,0 +1,100 @@
+📌 AInteG
+
+AI-powered document automation system (RAG, OCR, Invoice Parsing, Streamlit Console)
+
+AInteG is an end-to-end intelligent automation platform designed for small businesses.
+It includes:
+
+⚡ FastAPI backend
+
+🧠 RAG (Retrieval-Augmented Generation) with ChromaDB
+
+👁️ Hybrid OCR engine (Tesseract + OpenAI Vision)
+
+📄 AI-based Invoice Parser (LLM-powered)
+
+🖥️ Management Console in Streamlit
+
+📁 Upload, search, extraction & chat over documents
+
+🚀 Features
+Backend
+
+FastAPI REST API
+
+Chunked & regular file uploads
+
+RAG collections for general documents & invoices
+
+OCR pipeline (Tesseract + OpenAI fallback)
+
+Smart invoice parser using LLM + regex fallback
+
+Health checks, timeouts, file size management
+
+Console
+
+Streamlit UI
+
+Document chat with RAG
+
+Invoice manager (upload + OCR + structured extraction)
+
+File explorer
+
+API connection management
+
+🏗 Project Structure
+AInteG/
+│── backend/
+│   ├── api/
+│   ├── core/
+│   ├── uploads/
+│   ├── main.py
+│   ├── requirements.txt
+│
+│── console/
+│   ├── streamlit_app.py
+│   ├── requirements.txt
+│
+│── README.md
+│── .gitignore
+
+🔧 Backend Setup
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+
+
+Create .env:
+
+OPENAI_API_KEY=yourkey
+EMBEDDING_MODEL=text-embedding-3-small
+CHROMA_DB_DIR=./chroma_db
+
+
+Run server:
+
+uvicorn api.main:app --reload --port 8001
+
+
+API docs:
+👉 http://127.0.0.1:8001/docs
+
+🖥️ Console Setup (Streamlit)
+cd console
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+
+🔐 Security
+
+.env files are ignored and never pushed
+
+Upload folders not included in GitHub
+
+No API keys stored in source code
+
+📜 License
+
+MIT

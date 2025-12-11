@@ -105,6 +105,11 @@ def regex_fallback(text: str):
 # ----------------------------------------------------------
 def parse_invoice_text(text: str) -> dict:
 
+    
+    # Safety limit to avoid token overflow
+    MAX_TEXT_LENGTH = 10000  # περίπου 3k tokens
+    if len(text) > MAX_TEXT_LENGTH:
+        text = text[:MAX_TEXT_LENGTH]
     client = get_client()
     user_prompt = f"Extract the invoice data from the following OCR text:\n\n{text}"
 

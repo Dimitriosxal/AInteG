@@ -5,27 +5,27 @@ import pytesseract
 from PIL import Image
 from openai import OpenAI
 from dotenv import load_dotenv
-
+import base64
 load_dotenv()
 
-# Tesseract path (Windows)
+# -----------------------------------------
+# Setup
+# -----------------------------------------
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 # -----------------------------------------
-# Utility: quality score for OCR text
+# Utility: OCR quality scoring
 # -----------------------------------------
 def score_text(text: str) -> float:
+    """Returns score 0–1 based on readability."""
     if not text:
-        return 0
+        return 0.0
 
-    # % of alphabetic characters
     alpha = sum(c.isalpha() for c in text)
     ratio = alpha / max(1, len(text))
 
-    # penalize extremely short or gibberish blocks
     if len(text) < 30:
         ratio *= 0.3
 
@@ -33,20 +33,16 @@ def score_text(text: str) -> float:
 
 
 # -----------------------------------------
-# Tesseract OCR for images
+# TESSERACT OCR
 # -----------------------------------------
 def ocr_image_tesseract(image_bytes: bytes) -> str:
     try:
         img = Image.open(io.BytesIO(image_bytes))
-        text = pytesseract.image_to_string(img, lang="ell+eng")
-        return text
+        return pytesseract.image_to_string(img, lang="ell+eng")
     except Exception:
         return ""
 
 
-# -----------------------------------------
-# Tesseract OCR for PDFs
-# -----------------------------------------
 def ocr_pdf_tesseract(path: str) -> str:
     text = ""
     try:
@@ -63,91 +59,125 @@ def ocr_pdf_tesseract(path: str) -> str:
 
 
 # -----------------------------------------
-# OpenAI Vision OCR (image bytes)
+# OPENAI OCR (Vision)
 # -----------------------------------------
-def ocr_image_openai(image_bytes: bytes) -> str:
+def openai_ocr_image(image_bytes: bytes) -> str:
+    """OCR για εικόνα με OpenAI Vision."""
     try:
-        result = client.chat.completions.create(
-            model="gpt-4o-mini",
+        # Encode to base64
+        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # ή "gpt-4o" για καλύτερο OCR
             messages=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "input_text", "text": "Extract all text from this image:"},
-                        {"type": "input_image", "image": image_bytes}
+                        {"type": "text", "text": "Extract all text from this image."},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_image}"
+                            }
+                        }
                     ]
                 }
-            ]
+            ],
+            max_tokens=2000
         )
-        return result.choices[0].message.content or ""
-    except Exception:
+        return response.choices[0].message.content or ""
+    except Exception as e:
+        print(f"[ERROR] OpenAI OCR failed: {e}")
         return ""
 
 
-# -----------------------------------------
-# OpenAI Vision OCR for PDFs
-# -----------------------------------------
-def ocr_pdf_openai(path: str) -> str:
+def openai_ocr_pdf(path: str) -> str:
+    """OCR για PDF - βελτιωμένη έκδοση."""
     text = ""
     try:
         pdf = fitz.open(path)
-        for page in pdf:
-            pix = page.get_pixmap(dpi=200)
+        
+        # Περίγραψε το max pages για να μην κολλάει
+        max_pages = min(20, len(pdf))  # Μέχρι 20 σελίδες
+        
+        for page_num in range(max_pages):
+            page = pdf[page_num]
+            
+            # Μείωσε DPI για ταχύτερη επεξεργασία
+            pix = page.get_pixmap(dpi=150)
             img_bytes = pix.tobytes("png")
-
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": "Extract all text from this image:"},
-                            {"type": "input_image", "image": img_bytes}
-                        ]
-                    }
-                ]
-            )
-            page_text = resp.choices[0].message.content or ""
-            text += "\n" + page_text
-
+            
+            page_text = openai_ocr_image(img_bytes)
+            if page_text:
+                text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
+            
+            # Προαιρετικό: Προσθήκη delay για rate limits
+            import time
+            if page_num % 5 == 0:
+                time.sleep(0.5)
+        
         return text
-    except Exception:
+        
+    except Exception as e:
+        print(f"[ERROR] PDF OCR failed: {e}")
         return ""
 
 
 # -----------------------------------------
-# MAIN HYBRID OCR ENTRY
+# MAIN HYBRID OCR FUNCTION
 # -----------------------------------------
-def ocr_to_text(path: str, filename: str):
+def ocr_to_text(path: str, filename: str) -> str:
+    print("[DEBUG] ocr_to_text START")
+
     filename = filename.lower()
 
-    # Load file bytes once
-    content = open(path, "rb").read()
+    # Load bytes
+    try:
+        with open(path, "rb") as f:
+            file_bytes = f.read()
+        print("[DEBUG] File loaded")
+    except Exception as e:
+        print("[DEBUG] FAILED to load file:", e)
+        return ""
 
-    # Decide if image or pdf
     is_image = filename.endswith((".jpg", ".jpeg", ".png"))
     is_pdf = filename.endswith(".pdf")
 
-    # 1) Run Tesseract
+    # -----------------------
+    # 1) Tesseract OCR
+    # -----------------------
+    print("[DEBUG] Running Tesseract...")
     if is_image:
-        t_text = ocr_image_tesseract(content)
+        t_text = ocr_image_tesseract(file_bytes)
     else:
         t_text = ocr_pdf_tesseract(path)
+    print("[DEBUG] Tesseract DONE (length:", len(t_text), ")")
 
-    # 2) Run OpenAI Vision
+    # -----------------------
+    # 2) OpenAI OCR
+    # -----------------------
+    print("[DEBUG] Running OpenAI OCR...")
     if is_image:
-        o_text = ocr_image_openai(content)
+        o_text = openai_ocr_image(file_bytes)
     else:
-        o_text = ocr_pdf_openai(path)
+        o_text = openai_ocr_pdf(path)
+    print("[DEBUG] OpenAI OCR DONE (length:", len(o_text), ")")
 
-    # 3) Score both
+    # -----------------------
+    # 3) SCORE
+    # -----------------------
+    print("[DEBUG] Scoring...")
     score_t = score_text(t_text)
     score_o = score_text(o_text)
+    print("[DEBUG] Scoring DONE")
+    print(f"[DEBUG] Scores → Tesseract: {score_t:.3f}, OpenAI: {score_o:.3f}")
 
-    print(f"[OCR] Tesseract Score: {score_t:.3f}, OpenAI Score: {score_o:.3f}")
-
-    # 4) Pick best
-    if score_o >= score_t:
+    # -----------------------
+    # 4) PICK BEST
+    # -----------------------
+    if score_o > score_t:
+        print("[DEBUG] SELECTED: OpenAI OCR")
         return o_text
-    else:
-        return t_text
+
+    print("[DEBUG] SELECTED: Tesseract OCR")
+    return t_text
